@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -127,8 +128,22 @@ func Checksum(buffer []byte, size uint32) uint16 {
 	checksum = High + Low
 	return (uint16(^checksum))
 }
+
+func usage() {
+	fmt.Printf("\nUSAGE : goSynPortScanner [SourceIP] [SourcePort] [DestIP] [DestPort] \n")
+	fmt.Printf("\nExample : goSynPortScanner 192.168.1.1 1234 8.8.8.8 53 \n\n")
+	fmt.Printf("\t The Source Address of the packet  is :\t\t192.168.1.1 \n")
+	fmt.Printf("\t The Source Port of the packet is :\t\t1234 \n")
+	fmt.Printf("\t The Destinations Address of the packet is :\t8.8.8.8 \n")
+	fmt.Printf("\t The Destinations Port of the packet is :\t53 \n")
+	fmt.Printf("\n Note : You must check that The Destinations Address is legal \n \tAnd The Source Address should be The Address of Network card\n")
+}
 func main() {
 
+	if len(os.Args) < 5 {
+		usage()
+		return
+	}
 	var IP_HEADER_LEN uint32 = 20
 	var TCP_HEADER_LEN uint32 = 32
 	var PSD_HEADER_LEN uint32 = 12
@@ -136,7 +151,7 @@ func main() {
 	socket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_TCP)
 	if err != nil {
 
-		fmt.Fprintf(os.Stderr, "fail to Socket :%s", err.Error())
+		fmt.Fprintf(os.Stderr, "fail to Socket :%s\n", err.Error())
 		os.Exit(1)
 	}
 
@@ -160,23 +175,47 @@ func main() {
 	ipHeader.tos = 0
 	ipHeader.totalLength = htons(uint16(IP_HEADER_LEN + TCP_HEADER_LEN))
 
-	p := unsafe.Pointer(&ipHeader.totalLength)
-	b := (*[2]byte)(p)
-	fmt.Printf("%02X %02X \n", b[0], b[1])
-
 	ipHeader.id = htons(1)
 	ipHeader.flags = 0
 	ipHeader.ttl = 128
 	ipHeader.proto = syscall.IPPROTO_TCP
 	ipHeader.checksum = 0
-	ipHeader.sourceIP = inet_address("192.168.239.102")
-	ipHeader.destIP = inet_address(strings.Join(os.Args[1:2], ""))
+
+	sourceIP := strings.Join(os.Args[1:2], "")
+	IP := net.ParseIP(sourceIP)
+	b := IP.To4()
+	if b == nil {
+		fmt.Fprintf(os.Stderr, "Source Address is incorrect\n")
+		os.Exit(1)
+	}
+	ipHeader.sourceIP = inet_address(sourceIP)
+
+	destIP := strings.Join(os.Args[3:4], "")
+	IP = net.ParseIP(destIP)
+	b = IP.To4()
+	if b == nil {
+		fmt.Fprintf(os.Stderr, "Dest Address is incorrect\n")
+		os.Exit(1)
+	}
+	ipHeader.destIP = inet_address(destIP)
 
 	/*  Padding The tcp header data */
 	tcpHeader := new(TCP_HEADER)
-	destPort, _ := strconv.Atoi(strings.Join(os.Args[2:3], ""))
+
+	destPort, err := strconv.Atoi(strings.Join(os.Args[4:5], ""))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "DestPort must be a number \n%s \n", err.Error())
+		os.Exit(1)
+	}
 	tcpHeader.destPort = htons(uint16(destPort))
-	tcpHeader.soucePort = htons(45678) //Source Port
+
+	sourcePort, err := strconv.Atoi(strings.Join(os.Args[2:3], ""))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Source Port must be a number :\n%s\n", err.Error())
+		os.Exit(1)
+	}
+	tcpHeader.soucePort = htons(uint16(sourcePort)) //Source Port
+
 	tcpHeader.seq = htonl(0x12345678)
 	tcpHeader.ack = 0
 	tcpHeader.lengthAndres = (uint8(TCP_HEADER_LEN)/4<<4 | 0)
