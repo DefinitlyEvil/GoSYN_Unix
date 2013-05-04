@@ -56,7 +56,7 @@ type TCP_HEADER struct {
 	windowsSize  uint16
 	sum          uint16
 	urp          uint16
-	options      [12]byte
+	//options      [12]byte
 }
 
 func inet_address(IPString string) (value uint32) {
@@ -69,7 +69,6 @@ func inet_address(IPString string) (value uint32) {
 
 	var result uint32
 
-	//由于windows采用小位存储,因此用IP最后的值填充首位
 	result1 := uint32(d)
 	result1 = result1 << 24 //Padding First place
 
@@ -115,17 +114,13 @@ func Checksum(buffer []byte, size uint32) uint16 {
 
 	var checksum uint32
 	var i uint32 = 0
-	for ; size > 1; i++ {
-		checksum += uint32(buffer[i])
+	for ; size > 0; i += 2 {
+		checksum += uint32(buffer[i]) + uint32(buffer[i+1])<<8
 		size -= 2
 	}
 
-	if size != 0 {
-		checksum += uint32(buffer[i])
-	}
-	Low := checksum>>16 + (checksum & 0xffff)
-	High := checksum >> 16
-	checksum = High + Low
+	checksum = checksum>>16 + (checksum & 0xffff)
+	checksum += checksum >> 16
 	return (uint16(^checksum))
 }
 
@@ -145,7 +140,7 @@ func main() {
 		return
 	}
 	var IP_HEADER_LEN uint32 = 20
-	var TCP_HEADER_LEN uint32 = 32
+	var TCP_HEADER_LEN uint32 = 20
 	var PSD_HEADER_LEN uint32 = 12
 
 	socket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_TCP)
@@ -177,7 +172,7 @@ func main() {
 
 	ipHeader.id = htons(1)
 	ipHeader.flags = 0
-	ipHeader.ttl = 128
+	ipHeader.ttl = 64
 	ipHeader.proto = syscall.IPPROTO_TCP
 	ipHeader.checksum = 0
 
@@ -216,15 +211,13 @@ func main() {
 	}
 	tcpHeader.soucePort = htons(uint16(sourcePort)) //Source Port
 
-	tcpHeader.seq = htonl(0x12345678)
+	tcpHeader.seq = htonl(0x01)
 	tcpHeader.ack = 0
 	tcpHeader.lengthAndres = (uint8(TCP_HEADER_LEN)/4<<4 | 0)
 	tcpHeader.flag = 2 //SYN
-	tcpHeader.windowsSize = htons(8192)
+	tcpHeader.windowsSize = htons(10)
 	tcpHeader.sum = 0
 	tcpHeader.urp = 0
-	tcpOptions := [12]byte{0x02, 0x04, 0x05, 0xB4, 0x01, 0x03, 0x03, 0x02, 0x01, 0x01, 0x04, 0x02}
-	tcpHeader.options = tcpOptions
 
 	/* Padding The psd Header data */
 	psdHeader := new(PSD_HEADER)
@@ -267,7 +260,7 @@ func main() {
 	/* Create New packet ,And the length of packet is 52 bytes */
 	SendBuf := make([]byte, IP_HEADER_LEN+TCP_HEADER_LEN)
 	copy(SendBuf, (*[20]byte)(IPHeaderDataPtr)[:])
-	copy(SendBuf[20:], (*[32]byte)(TcpHeaderDataPtr)[:])
+	copy(SendBuf[20:], (*[20]byte)(TcpHeaderDataPtr)[:])
 
 	SendtoErr := syscall.Sendto(socket, SendBuf, 0, RemoteAddr)
 	if SendtoErr != nil {
@@ -275,6 +268,19 @@ func main() {
 		return
 	} else {
 		fmt.Printf("Sendto is ok \n")
+	}
+
+	/* Recv information from remote */
+	RecvBuf := make([]byte, 52) //The Buffer will not  more than 52 
+	_, _, RecvErr := syscall.Recvfrom(socket, RecvBuf, 0)
+	if RecvErr != nil {
+		fmt.Printf("%s", RecvErr.Error())
+	}
+
+	if RecvBuf[33]&ACK == ACK && RecvBuf[33]&SYN == SYN { //RecvBuf[33] is flag of tcp header
+		fmt.Printf("The Port %d is Open \n", destPort)
+	} else {
+		fmt.Printf("The Port %d is not open \n", destPort)
 	}
 
 }
