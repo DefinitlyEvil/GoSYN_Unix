@@ -109,6 +109,15 @@ func getRoutinueNum() uint32 {
 	n := checkRoutinueNum(strings.Join(Num, ""))
 	return uint32(n)
 }
+func getSrcPortOption() bool {
+	value, err := strconv.ParseBool(strings.Join(os.Args[6:7], ""))
+	if err != nil {
+		return true
+	} else {
+		fmt.Printf("value :%v", value)
+		return value
+	}
+}
 
 func ipAddressSelfAdd(IPString string) string {
 
@@ -169,7 +178,7 @@ func nextTask(NowDestBeginIP string, NowDestBeginPort uint16, DestStartPort uint
 	nowPort := NowDestBeginPort
 	var i uint8
 	for i = 0; i < routinueNum; i++ {
-		if nowPort == DestEndPort { //The Next Port will be overflow 
+		if nowPort == DestEndPort { //The Next Port will be overflow
 
 			nowIP = ipAddressSelfAdd(nowIP)
 			nowPort = DestStartPort
@@ -212,7 +221,7 @@ func getTaskNum(DestStartAddr string, DestEndAddr string, DestStartPort uint16, 
 }
 func main() {
 
-	if len(os.Args) < 6 {
+	if len(os.Args) < 7 {
 		usage()
 		return
 	}
@@ -225,27 +234,29 @@ func main() {
 	DestEndPort := getDestEndPort()
 
 	RoutinueNum := getRoutinueNum()
+	IsRandomSrcPort := getSrcPortOption()
 	runtime.GOMAXPROCS(int(RoutinueNum))
 	var i uint32
 	taskNum := getTaskNum(DestStartAddr, DestEndAddr, DestStartPort, DestEndPort)
 	space := taskNum / RoutinueNum
-	InstanceNum := RoutinueNum - 1
+	InstanceNum := RoutinueNum
 
 	fmt.Printf("space : %d taskNum %d\n", space, taskNum)
-	workes := make([]manager.Worker, InstanceNum)
+	workers := make([]manager.Worker, InstanceNum)
 	channels := make([]chan int, InstanceNum)
 
 	NowDestStartAddr := DestStartAddr
 	NowDestStartPort := DestStartPort
 	for i = 0; i < InstanceNum; i++ {
 		worker := new(manager.Worker)
-		workes[i] = *worker
-		workes[i].SourceAddr = SourceAddr
-		workes[i].SourcePort = SourcePort
-		workes[i].DestStartAddr = NowDestStartAddr
-		workes[i].DestStartPort = NowDestStartPort
-		workes[i].StartPort = DestStartPort
-		workes[i].EndPort = DestEndPort
+		workers[i] = *worker
+		workers[i].SourceAddr = SourceAddr
+		workers[i].SourcePort = SourcePort
+		workers[i].DestStartAddr = NowDestStartAddr
+		workers[i].DestStartPort = NowDestStartPort
+		workers[i].StartPort = DestStartPort
+		workers[i].EndPort = DestEndPort
+		workers[i].IsRandomSrcPort = IsRandomSrcPort
 		var NowDestEndAddr string
 		var NowDestEndPort uint16
 
@@ -257,11 +268,11 @@ func main() {
 		}
 
 		//fmt.Printf("i : %d NowDestStartAddr: %s  NowDestStartPort:  %d NowDestEndAddr : %s ,NowDestEndPort: %d  \n", i, NowDestStartAddr, NowDestStartPort, NowDestEndAddr, NowDestEndPort)
-		workes[i].DestEndAddr = NowDestEndAddr
-		workes[i].DestEndPort = NowDestEndPort
-		workes[i].Init()
+		workers[i].DestEndAddr = NowDestEndAddr
+		workers[i].DestEndPort = NowDestEndPort
+		workers[i].Init()
 		channels[i] = make(chan int, 1)
-		go workes[i].Run(channels[i])
+		go workers[i].Run(channels[i])
 		if (InstanceNum - 1) != i {
 			NowDestStartAddr, NowDestStartPort = nextTask(NowDestEndAddr, NowDestEndPort, DestStartPort, DestEndPort, 1)
 		}
@@ -270,7 +281,6 @@ func main() {
 			break
 		}
 	}
-
 	for _, ch := range channels {
 		<-ch
 	}

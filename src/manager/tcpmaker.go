@@ -83,7 +83,7 @@ func inet_address(IPString string) (value uint32) {
 
 	result4 := uint32(a) //Padding Last place
 
-	result = result1 + result2 + result3 + result4 // Combine 
+	result = result1 + result2 + result3 + result4 // Combine
 
 	value = result
 	return
@@ -134,7 +134,7 @@ func (this *TCPmaker) GetPacketLen() uint32 {
 	return Len
 
 }
-func (this *TCPmaker) MakePacket() (packet []byte) {
+func (this *TCPmaker) MakePacket(flag byte) (packet []byte) {
 
 	/* Padding The ip Head Data */
 	ipHeader := new(IP_HEADER)
@@ -160,7 +160,7 @@ func (this *TCPmaker) MakePacket() (packet []byte) {
 	tcpHeader.seq = htonl(0x01)
 	tcpHeader.ack = 0
 	tcpHeader.lengthAndres = (uint8(TCP_HEADER_LEN)/4<<4 | 0)
-	tcpHeader.flag = 2 //SYN
+	tcpHeader.flag = flag //SYN
 	tcpHeader.windowsSize = htons(10)
 	tcpHeader.sum = 0
 	tcpHeader.urp = 0
