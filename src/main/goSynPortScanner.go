@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -24,13 +25,24 @@ const (
 var mutex sync.Mutex
 
 func usage() {
-	fmt.Printf("\nUSAGE : goSynPortScanner [SourceIP] [SourcePort] [DestIP] [DestPort] \n")
-	fmt.Printf("\nExample : goSynPortScanner 192.168.1.1 1234 8.8.8.8 53 \n\n")
-	fmt.Printf("\t The Source Address of the packet  is :\t\t192.168.1.1 \n")
-	fmt.Printf("\t The Source Port of the packet is :\t\t1234 \n")
-	fmt.Printf("\t The Destinations Address of the packet is :\t8.8.8.8 \n")
-	fmt.Printf("\t The Destinations Port of the packet is :\t53 \n")
-	fmt.Printf("\n Note : You must check that The Destinations Address is legal \n \tAnd The Source Address should be The Address of Network card\n")
+	fmt.Printf(`
+USAGE : goSynPortScanner [SourceIP] [SourcePort] [DestStartIP]-[DestEndIP] [DestStartPort]-[DestEndPort] [RoutineNum] [IsRandomSrcPort]
+	
+	Example : goSynPortScanner 192.168.1.1 1234 8.8.8.8-8.8.8.9 53-1024  10 true 
+
+		The Source Address of the packet		:	192.168.1.1
+		The Source Port of the packet			:	1234
+		The Destination Start Address of the packet 		:	8.8.8.8
+		The Destination End Address of the packet 		:	8.8.8.8
+		The Destination Start Port of the packet		:	53
+		The Destination End Port  of the packet			:	1024
+		The  Routine Number of Will Created 			：  10
+		Whether	the source port be random generated			: 	false
+
+		Note : 
+			You must check that The Destinations Address is legal 
+			And The Source Address should be The Address of Network card
+`)
 }
 
 func checkIP(ip string) {
@@ -221,6 +233,7 @@ func getTaskNum(DestStartAddr string, DestEndAddr string, DestStartPort uint16, 
 }
 func main() {
 
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	if len(os.Args) < 7 {
 		usage()
 		return
@@ -235,7 +248,6 @@ func main() {
 
 	RoutinueNum := getRoutinueNum()
 	IsRandomSrcPort := getSrcPortOption()
-	runtime.GOMAXPROCS(int(RoutinueNum))
 	var i uint32
 	taskNum := getTaskNum(DestStartAddr, DestEndAddr, DestStartPort, DestEndPort)
 	space := taskNum / RoutinueNum
@@ -247,6 +259,8 @@ func main() {
 
 	NowDestStartAddr := DestStartAddr
 	NowDestStartPort := DestStartPort
+
+	startTime := time.Now()
 	for i = 0; i < InstanceNum; i++ {
 		worker := new(manager.Worker)
 		workers[i] = *worker
@@ -257,6 +271,7 @@ func main() {
 		workers[i].StartPort = DestStartPort
 		workers[i].EndPort = DestEndPort
 		workers[i].IsRandomSrcPort = IsRandomSrcPort
+		workers[i].RoutineId = int(i)
 		var NowDestEndAddr string
 		var NowDestEndPort uint16
 
@@ -271,7 +286,7 @@ func main() {
 		workers[i].DestEndAddr = NowDestEndAddr
 		workers[i].DestEndPort = NowDestEndPort
 		workers[i].Init()
-		channels[i] = make(chan int, 1)
+		channels[i] = make(chan int)
 		go workers[i].Run(channels[i])
 		if (InstanceNum - 1) != i {
 			NowDestStartAddr, NowDestStartPort = nextTask(NowDestEndAddr, NowDestEndPort, DestStartPort, DestEndPort, 1)
@@ -281,7 +296,12 @@ func main() {
 			break
 		}
 	}
-	for _, ch := range channels {
-		<-ch
+
+	for _, v := range channels {
+		<-v
+		//fmt.Printf("The %d Routine Finish  its task\n", <-v)
 	}
+	endTime := time.Now()
+	elapseTimeSec := float64(endTime.Sub(startTime).Nanoseconds()) / float64(time.Millisecond)
+	fmt.Printf("All Task is finished,elapse time :%0.3f ms\n", elapseTimeSec)
 }

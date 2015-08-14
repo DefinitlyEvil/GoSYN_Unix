@@ -28,6 +28,7 @@ type Worker struct {
 	nowDestAddr     string
 	nowDestPort     uint16
 	IsRandomSrcPort bool
+	RoutineId       int
 }
 
 func (w *Worker) createRawSocket() (fd int) {
@@ -273,11 +274,9 @@ func (w *Worker) run() {
 		RemoteAddr.Addr[2] = byteAddr[2]
 		RemoteAddr.Addr[3] = byteAddr[3]
 		RemoteAddr.Port = int(tcpMaker.GetlittleEndianDestPort())
-		//if !w.IsRandomSrcPort {
-		//mutex.Lock()
-		//}
+
 		socket := w.createRawSocket()
-		fmt.Printf("%d sendpacket,port :%d \n", i, w.nowDestPort)
+		//fmt.Printf("%d sendpacket,port :%d \n", i, w.nowDestPort)
 		w.sendPacket(Packet, RemoteAddr, socket)
 		RecvBuf, RecvLen := w.recvPacket(socket)
 		if RecvLen == 44 && w.check(RecvBuf) {
@@ -296,9 +295,7 @@ func (w *Worker) run() {
 			//fmt.Printf("IP :%s Port :%d \t is not open \n", w.nowDestAddr, w.nowDestPort)
 			syscall.Close(socket)
 		}
-		//if !w.IsRandomSrcPort {
-		//mutex.Unlock()
-		//}
+
 		NextIP, NextPort := w.nextTask()
 
 		//fmt.Printf("NextIP %s NextPort %d\n", NextIP, NextPort)
@@ -316,8 +313,7 @@ func (w *Worker) run() {
 func (w *Worker) Run(channel chan int) {
 	w.notify = channel
 	w.run()
-	fmt.Printf("Exit...")
-	channel <- 1
+	channel <- w.RoutineId
 }
 func sendRSTPacket(Maker *TCPmaker, RemoteAddr *syscall.SockaddrInet4, socket int) {
 	buf := Maker.MakePacket(RST)
